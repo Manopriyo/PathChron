@@ -5,6 +5,8 @@ PathChron is a simple and clean YouTube Lecture Companion designed to help stude
 It eliminates distractions and improves revision efficiency by allowing timestamp-based note-taking and PDF export.
 
 ---
+https://manopriyo.github.io/PathChron/
+---
 
 ## 🚀 Features
 
