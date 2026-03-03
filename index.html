@@ -40,19 +40,32 @@ button {
     cursor: pointer;
 }
 
-iframe {
+#player {
     width: 100%;
     height: 400px;
     margin-top: 15px;
-    border: none;
 }
 
 textarea {
     width: 100%;
-    height: 250px;
+    height: 200px;
     margin-top: 15px;
     padding: 10px;
     font-size: 14px;
+}
+
+.preview {
+    text-align: left;
+    margin-top: 15px;
+    padding: 10px;
+    background: #ffffff;
+    border: 1px solid #ddd;
+}
+
+.preview a {
+    color: blue;
+    cursor: pointer;
+    text-decoration: underline;
 }
 
 .dark-mode {
@@ -60,7 +73,8 @@ textarea {
     color: white;
 }
 
-.dark-mode textarea {
+.dark-mode textarea,
+.dark-mode .preview {
     background: #1e1e1e;
     color: white;
 }
@@ -81,9 +95,11 @@ textarea {
 <input type="text" id="youtubeLink" placeholder="Paste YouTube link here">
 <button onclick="loadVideo()">Load</button>
 
-<div id="videoContainer"></div>
+<div id="player"></div>
 
-<textarea id="notes" placeholder="Write your notes here..."></textarea>
+<textarea id="notes" placeholder="Write notes with timestamps like 12:45 - Important concept"></textarea>
+
+<div class="preview" id="preview"></div>
 
 <br>
 <button onclick="addTimestamp()">Add Timestamp</button>
@@ -92,12 +108,19 @@ textarea {
 
 </div>
 
+<script src="https://www.youtube.com/iframe_api"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <script>
-let playerTime = 0;
+let player;
+let videoID = "";
+let videoTitle = "";
+let videoURL = "";
 
-// Extract YouTube ID
+// YouTube API Ready
+function onYouTubeIframeAPIReady() {}
+
+// Extract Video ID
 function getYouTubeID(url) {
     let regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?v=))([^#\&\?]*).*/;
     let match = url.match(regExp);
@@ -106,14 +129,21 @@ function getYouTubeID(url) {
 
 // Load Video
 function loadVideo() {
-    let link = document.getElementById("youtubeLink").value;
-    let videoID = getYouTubeID(link);
+    videoURL = document.getElementById("youtubeLink").value;
+    videoID = getYouTubeID(videoURL);
 
     if (videoID) {
-        document.getElementById("videoContainer").innerHTML =
-            `<iframe id="ytplayer" 
-            src="https://www.youtube.com/embed/${videoID}?enablejsapi=1"
-            allowfullscreen></iframe>`;
+        player = new YT.Player('player', {
+            height: '400',
+            width: '100%',
+            videoId: videoID
+        });
+
+        fetch(`https://www.youtube.com/oembed?url=${videoURL}&format=json`)
+        .then(res => res.json())
+        .then(data => {
+            videoTitle = data.title;
+        });
     } else {
         alert("Invalid YouTube link");
     }
@@ -121,28 +151,65 @@ function loadVideo() {
 
 // Auto Save Notes
 let notesArea = document.getElementById("notes");
+let previewDiv = document.getElementById("preview");
 
 notesArea.value = localStorage.getItem("studyNotes") || "";
+updatePreview();
 
 notesArea.addEventListener("input", function() {
     localStorage.setItem("studyNotes", notesArea.value);
+    updatePreview();
 });
 
-// Add Timestamp (Manual input since no API used)
-function addTimestamp() {
-    let time = prompt("Enter timestamp (e.g., 12:45):");
-    if (time) {
-        notesArea.value += `\n[${time}] - `;
-        localStorage.setItem("studyNotes", notesArea.value);
+// Convert timestamps to clickable
+function updatePreview() {
+    let content = notesArea.value;
+    let regex = /(\d+):(\d+)/g;
+
+    content = content.replace(regex, function(match, m, s) {
+        let seconds = parseInt(m)*60 + parseInt(s);
+        return `<a onclick="seekTo(${seconds})">${match}</a>`;
+    });
+
+    previewDiv.innerHTML = content.replace(/\n/g, "<br>");
+}
+
+// Seek video
+function seekTo(seconds) {
+    if (player) {
+        player.seekTo(seconds, true);
+        player.playVideo();
     }
 }
 
-// Download as PDF
+// Add Timestamp Automatically
+function addTimestamp() {
+    if (player) {
+        let seconds = Math.floor(player.getCurrentTime());
+        let m = Math.floor(seconds / 60);
+        let s = seconds % 60;
+        let timestamp = `${m}:${s.toString().padStart(2,'0')}`;
+        notesArea.value += `\n${timestamp} - `;
+        localStorage.setItem("studyNotes", notesArea.value);
+        updatePreview();
+    }
+}
+
+// Download PDF
 async function downloadPDF() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    let text = notesArea.value;
-    doc.text(text, 10, 10);
+
+    doc.setFontSize(14);
+    doc.text(videoTitle || "Study Notes", 10, 10);
+
+    doc.setFontSize(10);
+    doc.text(videoURL || "", 10, 18);
+
+    doc.setFontSize(12);
+    let text = doc.splitTextToSize(notesArea.value, 180);
+    doc.text(text, 10, 30);
+
     doc.save("StudyNotes.pdf");
 }
 
